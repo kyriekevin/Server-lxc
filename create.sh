@@ -12,7 +12,7 @@ log_message() {
 CPUS="2"
 MEMORY="32GB"  # for LXC config
 MEMORY_MB=32000  # in MB for the script
-GPUS=("4f:00.0" "52:00.0" "56:00.0" "57:00.0") # lspci | grep -i nvidia
+GPUS=("4f:00.0" "52:00.0" "56:00.0" "57:00.0")
 SSH_START_PORT=2222
 CPU_SETS=("0-1" "2-3" "4-5" "6-7")
 
@@ -62,6 +62,13 @@ do
     log_message "INFO" "Assigning GPU with address $GPU_PCI_ADDRESS to $CONTAINER_NAME."
     lxc config device add $CONTAINER_NAME gpu$i gpu pci=$GPU_PCI_ADDRESS || { log_message "ERROR" "Error setting GPU for $CONTAINER_NAME"; exit 1; }
 
+    # Configure NVIDIA runtime for the container
+    log_message "INFO" "Configuring NVIDIA runtime for $CONTAINER_NAME."
+    lxc config set $CONTAINER_NAME nvidia.runtime true || { log_message "ERROR" "Error configuring NVIDIA runtime for $CONTAINER_NAME"; exit 1; }
+
+    log_message "INFO" "Configuring NVIDIA driver capabilities for $CONTAINER_NAME."
+    lxc config set $CONTAINER_NAME nvidia.driver.capabilities all || { log_message "ERROR" "Error configuring NVIDIA driver capabilities for $CONTAINER_NAME"; exit 1; }
+
     log_message "INFO" "Mapping SSH port for $CONTAINER_NAME to port $SSH_START_PORT on host."
     lxc config device add $CONTAINER_NAME sshport$SSH_START_PORT proxy listen=tcp:0.0.0.0:$SSH_START_PORT connect=tcp:127.0.0.1:22 || { log_message "ERROR" "Error setting SSH port for $CONTAINER_NAME"; exit 1; }
 
@@ -69,3 +76,4 @@ do
 done
 
 log_message "INFO" "All containers successfully created and configured!"
+
