@@ -1,0 +1,11 @@
+image_id,x1,y1,x2,y2,defect_type
+image0,33,33,59,62,defect2
+image1,8,40,49,86,defect3
+image2,36,50,55,79,defect2
+image3,61,55,110,69,defect3
+image4,76,85,88,105,defect2
+image5,0,4,11,36,defect3
+image6,70,93,104,142,defect1
+image7,50,43,67,90,defect1
+image8,77,22,112,54,defect2
+image9,73,74,115,112,defect2
