@@ -2,83 +2,61 @@ import pandas as pd
 import numpy as np
 
 
-def generate_data(num_entries, algorithm_types):
-    # Create empty lists to store the data
-    image_ids = [f"image{i}" for i in range(num_entries)]
-    x1s = np.random.randint(0, 100, size=num_entries).tolist()
-    y1s = np.random.randint(0, 100, size=num_entries).tolist()
-    x2s = (np.array(x1s) + np.random.randint(10, 50, size=num_entries)).tolist()
-    y2s = (np.array(y1s) + np.random.randint(10, 50, size=num_entries)).tolist()
-    defect_types = np.random.choice(
-        ["defect1", "defect2", "defect3"], size=num_entries
-    ).tolist()
-    inference_times = np.round(
-        np.random.uniform(0.01, 0.1, size=num_entries), 2
-    ).tolist()
-    algorithm_types_list = np.random.choice(algorithm_types, size=num_entries).tolist()
-
-    return (
-        image_ids,
-        x1s,
-        y1s,
-        x2s,
-        y2s,
-        defect_types,
-        inference_times,
-        algorithm_types_list,
-    )
+def generate_ground_truth(num_images=10, max_defects_per_image=3):
+    ground_truth_data = []
+    for i in range(num_images):
+        num_defects = np.random.randint(1, max_defects_per_image + 1)
+        for _ in range(num_defects):
+            ground_truth_data.append(
+                {
+                    "image_id": f"image{i}",
+                    "x1": np.random.randint(0, 100),
+                    "y1": np.random.randint(0, 100),
+                    "x2": np.random.randint(100, 150),
+                    "y2": np.random.randint(100, 150),
+                    "defect_type": np.random.choice(["defect1", "defect2", "defect3"]),
+                }
+            )
+    return pd.DataFrame(ground_truth_data)
 
 
-def generate_mock_data(
-    num_entries=10,
+def generate_inference(
+    num_images=10,
+    avg_defects_per_image=4,
     algorithm_types=("algo1", "algo2", "algo3", "algo4"),
-    save_to_csv=False,
 ):
-    image_ids, x1s, y1s, x2s, y2s, defect_types, _, _ = generate_data(
-        num_entries, algorithm_types
-    )
-    # Create DataFrames for ground truth and inference data
-    gt_data = {
-        "image_id": image_ids,
-        "x1": x1s,
-        "y1": y1s,
-        "x2": x2s,
-        "y2": y2s,
-        "defect_type": defect_types,
-    }
+    inference_data = []
+    # Determine total inference time for each algorithm type
+    total_inference_time = {algo: np.random.uniform(1, 10) for algo in algorithm_types}
 
-    (
-        image_ids,
-        x1s,
-        y1s,
-        x2s,
-        y2s,
-        defect_types,
-        inference_times,
-        algorithm_types_list,
-    ) = generate_data(num_entries, algorithm_types)
-    inference_data = {
-        "image_id": image_ids,
-        "x1": x1s,
-        "y1": y1s,
-        "x2": x2s,
-        "y2": y2s,
-        "defect_type": defect_types,
-        "inference_time": inference_times,
-        "algorithm_type": algorithm_types_list,
-    }
-    gt_df = pd.DataFrame(gt_data)
-    inference_df = pd.DataFrame(inference_data)
-
-    # Optionally save the DataFrames to CSV files
-    if save_to_csv:
-        gt_df.to_csv("ground_truth.csv", index=False)
-        inference_df.to_csv("inference_results.csv", index=False)
-
-    return gt_df, inference_df
+    for i in range(num_images):
+        num_defects = np.random.poisson(avg_defects_per_image)
+        for _ in range(num_defects):
+            algo_type = np.random.choice(algorithm_types)
+            inference_data.append(
+                {
+                    "image_id": f"image{i}",
+                    "x1": np.random.randint(0, 100),
+                    "y1": np.random.randint(0, 100),
+                    "x2": np.random.randint(100, 150),
+                    "y2": np.random.randint(100, 150),
+                    "defect_type": np.random.choice(["defect1", "defect2", "defect3"]),
+                    "algorithm_type": algo_type,
+                    "total_inference_time": total_inference_time[
+                        algo_type
+                    ],  # Use the fixed total time for this algorithm
+                }
+            )
+    return pd.DataFrame(inference_data)
 
 
-# Example usage:
-gt_df, inference_df = generate_mock_data(save_to_csv=True)
-print(gt_df.head())
-print(inference_df.head())
+# Generate ground truth and inference data
+gt_df = generate_ground_truth()
+inference_df = generate_inference()
+
+# Save the data to CSV files
+gt_df.to_csv("ground_truth.csv", index=False)
+inference_df.to_csv("inference_results.csv", index=False)
+
+print("Ground Truth saved to 'ground_truth.csv'")
+print("Inference Results saved to 'inference_results.csv'")
