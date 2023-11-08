@@ -1,5 +1,0 @@
-image_id,x1,y1,x2,y2,defect_type
-image1,10,10,50,50,defect1
-image1,60,60,100,100,defect2
-image2,15,15,55,55,defect1
-image2,65,65,105,105,defect2

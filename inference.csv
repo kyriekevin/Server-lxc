@@ -1,7 +1,0 @@
-image_id,x1,y1,x2,y2,defect_type,inference_time
-image1,12,14,51,49,defect1,0.03
-image1,59,61,99,101,defect2,0.03
-image1,59,61,98,100,defect3,0.03
-image2,16,17,53,54,defect1,0.04
-image2,63,64,104,106,defect2,0.04
-image2,63,64,111,116,defect3,0.04
