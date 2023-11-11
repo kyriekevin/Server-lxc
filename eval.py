@@ -1,38 +1,278 @@
-import pandas as pd
-import argparse
+import json
+import os
+import random
+from typing import Dict, List, Tuple
+
+gt_folder_path = "./8类缺陷/"
+user_folder_path = "./inferece.json"
+run_time = 100
 
 
-# Function to calculate the Intersection over Union (IoU) of two bounding boxes
-def calculate_iou(boxA, boxB):
-    # Ensure that the coordinates are non-negative numbers
-    if not all(isinstance(coord, (int, float)) and coord >= 0 for coord in boxA + boxB):
-        raise ValueError("Coordinates must be non-negative numbers.")
+def parse_gt_json(json_file_path: str) -> Tuple[str, List[Dict]]:
+    """
+    Parses the ground truth JSON file and extracts the object data, along with the image file name.
 
-    # Ensure that the coordinates are in the correct order (x1 < x2 and y1 < y2)
-    if not (boxA[0] < boxA[2] and boxA[1] < boxA[3]):
-        raise ValueError("BoxA coordinates are not in the correct order.")
-    if not (boxB[0] < boxB[2] and boxB[1] < boxB[3]):
-        raise ValueError("BoxB coordinates are not in the correct order.")
+    Args:
+    json_file_path (str): The file path of the JSON file.
 
-    # Calculate the (x, y)-coordinates of the intersection rectangle
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[2], boxB[2])
-    yB = min(boxA[3], boxB[3])
+    Returns:
+    Tuple[str, List[Dict]]: A tuple where the first element is the image file name associated with this JSON,
+                            and the second element is a list of ground truth data (each item is a dictionary representing an object).
+    """
+    with open(json_file_path, "r") as file:
+        data = json.load(file)
 
-    # Compute the area of intersection rectangle
-    interArea = max(0, xB - xA) * max(0, yB - yA)
+    objects = data.get("step_1", {}).get("result", [])
+    image_file_name = os.path.basename(json_file_path).rsplit(".", 1)[0]
 
-    # Compute the area of both the prediction and ground-truth rectangles
-    boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
-    boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+    return image_file_name, objects
 
-    # Compute the intersection over union by taking the intersection
-    # area and dividing it by the sum of prediction + ground-truth
-    # areas - the interesection area
-    iou = interArea / float(boxAArea + boxBArea - interArea)
+
+def parse_gt_folder(folder_path: str) -> Dict[str, List[Dict]]:
+    gt_data = {}
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith(".json"):
+                file_path = os.path.join(root, file)
+                image_file_name, objects = parse_gt_json(file_path)
+                gt_data[image_file_name] = objects
+
+    return gt_data
+
+
+def generate_mock_predictions(
+    gt_data: Dict[str, List[Tuple[List[Dict], str]]], output_file: str
+):
+    mock_predictions = []
+
+    for _, objects_info in gt_data.items():
+        for objects, image_file_name in objects_info:
+            mock_objects = []
+            for obj in objects:
+                if random.random() < 0.8:
+                    mock_obj = {
+                        "x": obj["x"] + random.randint(-10, 10),
+                        "y": obj["y"] + random.randint(-10, 10),
+                        "width": obj["width"] + random.randint(-10, 10),
+                        "height": obj["height"] + random.randint(-10, 10),
+                        "attribute": obj["attribute"],
+                    }
+                    mock_objects.append(mock_obj)
+                extra_predictions_rate = random.randint(0, 5)
+                for _ in range(extra_predictions_rate):
+                    mock_obj = {
+                        "x": random.randint(0, 1000),
+                        "y": random.randint(0, 1000),
+                        "width": random.randint(10, 100),
+                        "height": random.randint(10, 100),
+                        "attribute": obj["attribute"],
+                    }
+                    mock_objects.append(mock_obj)
+
+            mock_predictions.append(
+                {"image_name": image_file_name, "objects": mock_objects}
+            )
+
+    # 将模拟预测写入文件
+    with open(output_file, "w", encoding="utf-8") as file:
+        json.dump(mock_predictions, file, indent=4, ensure_ascii=False)
+
+
+def parse_user_json(json_file_path: str) -> List[Tuple[List[Dict], str]]:
+    """
+    Parses the user JSON file and extracts the object data, along with the image file name.
+
+    Args:
+    json_file_path (str): The file path of the JSON file.
+
+    Returns:
+    List[Tuple[List[Dict], str]]: A list of tuples, each containing object data and the associated image file name.
+    """
+    with open(json_file_path, "r") as file:
+        data = json.load(file)
+
+    parsed_data = []
+    for item in data:
+        image_name = item["image_name"]
+        objects = item["objects"]
+        parsed_data.append((objects, image_name))
+
+    return parsed_data
+
+
+def parse_user_folder(folder_path: str) -> List[Tuple[List[Dict], str]]:
+    """
+    Parses a folder containing multiple user JSON files.
+
+    Args:
+    folder_path (str): The file path of the folder containing JSON files.
+
+    Returns:
+    List[Tuple[List[Dict], str]]: A list of tuples, each containing object data and the associated image file name.
+    """
+    user_data = []
+    for file in os.listdir(folder_path):
+        if file.endswith(".json"):
+            file_path = os.path.join(folder_path, file)
+            user_data.extend(parse_user_json(file_path))
+
+    return user_data
+
+
+def process_user_input(input_path: str) -> List[Tuple[List[Dict], str]]:
+    """
+    Processes the user's input, which can be either a single JSON file or a folder containing multiple JSON files.
+
+    Args:
+    input_path (str): The path to the JSON file or folder containing JSON files.
+
+    Returns:
+    List[Tuple[List[Dict], str]]: A list of tuples, each containing object data and the associated image file name.
+    """
+    if os.path.isfile(input_path) and input_path.endswith(".json"):
+        # Single JSON file
+        return parse_user_json(input_path)
+    elif os.path.isdir(input_path):
+        # Folder containing multiple JSON files
+        return parse_user_folder(input_path)
+    else:
+        raise ValueError("The input path is neither a JSON file nor a directory.")
+
+
+def calculate_iou(box1: Dict, box2: Dict) -> float:
+    x1, y1, w1, h1 = box1["x"], box1["y"], box1["width"], box1["height"]
+    x2, y2, w2, h2 = box2["x"], box2["y"], box2["width"], box2["height"]
+
+    xi1 = max(x1, x2)
+    yi1 = max(y1, y2)
+    xi2 = min(x1 + w1, x2 + w2)
+    yi2 = min(y1 + h1, y2 + h2)
+    inter_area = max(xi2 - xi1, 0) * max(yi2 - yi1, 0)
+
+    union_area = w1 * h1 + w2 * h2 - inter_area
+
+    iou = inter_area / union_area if union_area != 0 else 0
 
     return iou
+
+
+def match_predictions(gt_data, pred_data, iou_threshold=0.5):
+    matched_gt = {}
+    matched_preds = {}
+    unmatched_preds = {}
+
+    for pred_boxes, img_name in pred_data:
+        gt_boxes = gt_data.get(img_name, [])
+        matched_gt[img_name] = []
+        matched_preds[img_name] = []
+        unmatched_preds[img_name] = []
+
+        for pred_box in pred_boxes:
+            best_iou = 0
+            best_gt_box = None
+            for gt_box in gt_boxes:
+                iou = calculate_iou(pred_box, gt_box)
+                if (
+                    iou > best_iou
+                    and iou >= iou_threshold
+                    and pred_box["attribute"] == gt_box["attribute"]
+                ):
+                    best_iou = iou
+                    best_gt_box = gt_box
+
+            if best_gt_box:
+                matched_gt[img_name].append(best_gt_box)
+                matched_preds[img_name].append(pred_box)
+                gt_boxes.remove(best_gt_box)  # 避免重复匹配
+            else:
+                unmatched_preds[img_name].append(pred_box)
+
+    return matched_gt, matched_preds, unmatched_preds
+
+
+def group_by_defect_type(matched_gt, matched_preds, unmatched_preds):
+    grouped_matched_gt = {}
+    grouped_matched_preds = {}
+    grouped_unmatched_preds = {}
+
+    for img_name, boxes in matched_gt.items():
+        for box in boxes:
+            defect_type = box["attribute"]
+            if defect_type not in grouped_matched_gt:
+                grouped_matched_gt[defect_type] = []
+            grouped_matched_gt[defect_type].append(box)
+
+    for img_name, boxes in matched_preds.items():
+        for box in boxes:
+            defect_type = box["attribute"]
+            if defect_type not in grouped_matched_preds:
+                grouped_matched_preds[defect_type] = []
+            grouped_matched_preds[defect_type].append(box)
+
+    for img_name, boxes in unmatched_preds.items():
+        for box in boxes:
+            defect_type = box["attribute"]
+            if defect_type not in grouped_unmatched_preds:
+                grouped_unmatched_preds[defect_type] = []
+            grouped_unmatched_preds[defect_type].append(box)
+
+    return grouped_matched_gt, grouped_matched_preds, grouped_unmatched_preds
+
+
+def calculate_single_item_scores(
+    matched_gt, matched_preds, unmatched_preds, total_time, gt_data
+):
+    scores = {}
+    details = {}
+    total_images = len(set([img_name for img_name in gt_data]))  # 计算总图像数量
+
+    # 假设matched_gt, matched_preds, unmatched_preds已经按缺陷类型分组
+    for defect_type in matched_gt:
+        gt_boxes = matched_gt[defect_type]
+        pred_correct_boxes = matched_preds[defect_type]
+        pred_incorrect_boxes = unmatched_preds[defect_type]
+
+        M = len(gt_boxes)  # 标准框总数
+        M1 = len(pred_correct_boxes)  # 正确匹配的框数
+        M2 = len(pred_incorrect_boxes)  # 错误匹配的框数
+
+        # 计算发现率得分
+        discovery_rate = M1 / M if M > 0 else 0
+        discovery_score = discovery_rate * 60
+
+        # 计算误检比得分
+        false_detection_rate = M2 / M if M > 0 else 0
+        false_detection_score = calculate_false_detection_score(false_detection_rate)
+
+        # 计算识别效率得分
+        # 计算每种缺陷类型对应的图像数量
+        defect_type_images = len(
+            set(
+                [
+                    img_name
+                    for img_name, boxes in gt_data.items()
+                    if any(box["attribute"] == defect_type for box in boxes)
+                ]
+            )
+        )
+        # 计算每种类型的平均处理时间
+        avg_processing_time = (
+            (total_time * defect_type_images / total_images) if total_images > 0 else 0
+        )
+        efficiency_score = calculate_efficiency_score(avg_processing_time)
+
+        # 计算单项识别效果得分
+        single_item_score = discovery_score + false_detection_score + efficiency_score
+        scores[defect_type] = single_item_score
+        details[defect_type] = {
+            "discovery_rate": discovery_rate,
+            "discovery_score": discovery_score,
+            "false_detection_rate": false_detection_rate,
+            "false_detection_score": false_detection_score,
+            "efficiency_score": efficiency_score,
+        }
+
+    return scores, details
 
 
 # Define the thresholds and corresponding scores for false detection and efficiency
@@ -61,190 +301,52 @@ def calculate_efficiency_score(T):
     return calculate_score(T, efficiency_thresholds, efficiency_scores)
 
 
-# Adjust the configure_evaluation function to return a dictionary of weights
-def configure_evaluation(iou_threshold, weights, inference_df):
-    # Convert the weights string into a dictionary if provided
-    weights_dict = {}
-    if weights:
-        for item in weights.split(","):
-            algo, weight = item.split(":")
-            algo = algo.strip()
-            if algo in inference_df["algorithm_type"].unique():
-                weights_dict[algo] = float(weight.strip())
-            else:
-                raise ValueError(
-                    f"Algorithm type '{algo}' specified in weights is not present in the inference data."
-                )
-    else:
-        # If weights are not provided, set default weight of 1 for each algorithm type found in inference_df
-        algorithm_types = inference_df["algorithm_type"].unique()
-        weights_dict = {algo_type: 1 for algo_type in algorithm_types}
+def calculate_total_score(single_item_scores, defect_weights=None):
+    if not defect_weights:
+        # 如果没有提供权重，则假定所有缺陷类型权重相同
+        defect_weights = {defect_type: 1 for defect_type in single_item_scores}
 
-    return iou_threshold, weights_dict
+    total_score = 0
+    total_weight = sum(defect_weights.values())
+
+    for defect_type, score in single_item_scores.items():
+        weight = defect_weights.get(defect_type, 1)
+        total_score += score * weight
+
+    return total_score / total_weight if total_weight > 0 else 0
 
 
-# Function to calculate the individual score for a defect type
-def calculate_individual_score(M1, M, M2, total_time, num_images):
-    detection_rate_score = (M1 / M) * 60 if M else 0
-    false_detection_score = calculate_false_detection_score(M2 / M) if M else 0
-    efficiency_score = (
-        calculate_efficiency_score(total_time / num_images) if num_images else 0
+def print_formatted_scores(score_details, total_score):
+    # 打印表头
+    print(
+        f"{'Defect Type':<20} {'Discovery Rate':<20} {'Discovery Score':<20} {'False Detection Rate':<25} {'False Detection Score':<25} {'Efficiency Score':<20}"
     )
-    return (
-        detection_rate_score + false_detection_score + efficiency_score,
-        detection_rate_score,
-        false_detection_score,
-        efficiency_score,
-    )
+    print("-" * 130)
 
-
-# Function to calculate the overall score for all defect types
-def calculate_overall_score(individual_scores, weights):
-    if sum(weights) == 0:
-        return 0
-    return sum(
-        score * weight for score, weight in zip(individual_scores, weights)
-    ) / sum(weights)
-
-
-# Main evaluation function encapsulating the whole process
-def evaluate_algorithm(gt_df, inference_df, iou_threshold, weights):
-    # Create a dictionary to hold scores for each algorithm type
-    scores_by_type = {}
-
-    # Get a list of unique algorithm types from the inference data
-    algorithm_types = inference_df["algorithm_type"].unique()
-
-    # Get the total inference time for each algorithm from the first instance, assuming it's the same for all instances of the algorithm.
-    total_time_by_algorithm = (
-        inference_df.groupby("algorithm_type")["total_inference_time"].first().to_dict()
-    )
-
-    # Iterate over each algorithm type to calculate individual scores
-    for algorithm_type in algorithm_types:
-        # Filter the inference results for the current algorithm type
-        inference_df_type = inference_df[
-            inference_df["algorithm_type"] == algorithm_type
-        ].copy()  # Make a copy to avoid warning
-
-        # Initialize the 'correct' column as boolean type before any assignment
-        inference_df_type["correct"] = False
-        inference_df_type["correct"] = inference_df_type["correct"].astype("bool")
-
-        # Calculate the total number of images evaluated by the algorithm
-        num_images_evaluated_by_algorithm = inference_df_type["image_id"].nunique()
-
-        # Calculate IOU and determine correct detections for the current type
-        for i, inf_row in inference_df_type.iterrows():
-            gt_boxes = gt_df[
-                (gt_df["image_id"] == inf_row["image_id"])
-                & (gt_df["defect_type"] == inf_row["defect_type"])
-            ]
-            correct_detection = False
-            for _, gt_row in gt_boxes.iterrows():
-                iou_score = calculate_iou(
-                    inf_row[["x1", "y1", "x2", "y2"]].tolist(),
-                    gt_row[["x1", "y1", "x2", "y2"]].tolist(),
-                )
-                if iou_score >= iou_threshold:
-                    correct_detection = True
-                    break
-            # Use .loc to set the value and explicitly cast to boolean
-            inference_df_type.loc[i, "correct"] = bool(correct_detection)
-
-        # Calculate scores for the current algorithm type
-        M = len(gt_df)
-        M1 = inference_df_type["correct"].sum()
-        M2 = len(inference_df_type) - M1
-
-        # Calculate the efficiency score based on the average time taken per image
-        total_time = total_time_by_algorithm[algorithm_type]
-        average_time_per_image = (
-            total_time / num_images_evaluated_by_algorithm
-            if num_images_evaluated_by_algorithm
-            else float("inf")
-        )
-        efficiency_score = calculate_efficiency_score(average_time_per_image)
-
-        detection_rate_score = (M1 / M) * 60 if M else 0
-        false_detection_score = calculate_false_detection_score(M2 / M) if M else 0
-
-        individual_score = (
-            detection_rate_score + false_detection_score + efficiency_score
+    # 打印每个缺陷类型的详细得分
+    for defect_type, details in score_details.items():
+        print(
+            f"{defect_type:<20} {details['discovery_rate']:<20.2f} {details['discovery_score']:<20.2f} {details['false_detection_rate']:<25.2f} {details['false_detection_score']:<25} {details['efficiency_score']:<20}"
         )
 
-        # Add the scores to the dictionary with algorithm type as key
-        scores_by_type[algorithm_type] = {
-            "Detection Rate Score": detection_rate_score,
-            "False Detection Score": false_detection_score,
-            "Efficiency Score": efficiency_score,
-            "Individual Score": individual_score,
-        }
-
-    # Calculate the overall score by weighting the individual scores
-    overall_score = 0
-    total_weight = sum(weights.values())
-    for algorithm_type, scores in scores_by_type.items():
-        weight = weights.get(
-            algorithm_type, 1
-        )  # Get the weight for the algorithm type, defaulting to 1
-        overall_score += scores["Individual Score"] * weight
-    if total_weight > 0:
-        overall_score /= total_weight
-
-    return scores_by_type, overall_score
+    # 打印总分
+    print("\nTotal Score:", total_score)
 
 
-# Main function to run the evaluation
-def main(gt_csv, inference_csv, iou_threshold, weights):
-    # Read the ground truth and inference data from CSV files
-    gt_df = pd.read_csv(gt_csv)
-    inference_df = pd.read_csv(inference_csv)
+gt_data = parse_gt_folder(gt_folder_path)
+# generate_mock_predictions(gt_data, "inferece.json")
+predict_data = process_user_input(user_folder_path)
 
-    # Configure the evaluation settings
-    iou_threshold, weights = configure_evaluation(iou_threshold, weights, inference_df)
+matched_gt, matched_preds, unmatched_preds = match_predictions(gt_data, predict_data)
 
-    # Evaluate the algorithm
-    scores_by_type, overall_score = evaluate_algorithm(
-        gt_df, inference_df, iou_threshold, weights
-    )
+matched_gt, matched_preds, unmatched_preds = group_by_defect_type(
+    matched_gt, matched_preds, unmatched_preds
+)
 
-    # Print the scores in alphabetical order of the algorithm types
-    for algo_type in sorted(scores_by_type.keys()):
-        scores = scores_by_type[algo_type]
-        print(f"Scores for {algo_type}:")
-        for score_name, score_value in sorted(scores.items()):
-            print(f"{score_name}: {score_value}")
-        print()
+single_item_scores, score_details = calculate_single_item_scores(
+    matched_gt, matched_preds, unmatched_preds, run_time, gt_data
+)
 
-    print(f"Overall Score: {overall_score}")
+total_score = calculate_total_score(single_item_scores)
 
-
-# If this script is executed (rather than imported as a module), run the main function
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Evaluate object detection algorithms."
-    )
-    parser.add_argument(
-        "--gt_csv",
-        type=str,
-        default="./ground_truth.csv",
-        help="Path to the ground truth CSV file.",
-    )
-    parser.add_argument(
-        "--inference_csv",
-        type=str,
-        default="./inference_results.csv",
-        help="Path to the inference results CSV file.",
-    )
-    parser.add_argument(
-        "--iou_threshold", type=float, default=0.5, help="IoU threshold for evaluation."
-    )
-    parser.add_argument(
-        "--weights",
-        help="Comma-separated list of weights for algorithm types (e.g., 'algo1:1,algo2:2').",
-    )
-
-    args = parser.parse_args()
-
-    main(args.gt_csv, args.inference_csv, args.iou_threshold, args.weights)
+print_formatted_scores(score_details, total_score)
