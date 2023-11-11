@@ -3,9 +3,9 @@ import os
 import random
 from typing import Dict, List, Tuple
 
-gt_folder_path = "./8类缺陷/"
-user_folder_path = "./inferece.json"
-run_time = 100
+gt_folder_path = "./img_test/"
+user_folder_path = "./mock_data/"
+run_time = 10
 
 
 def parse_gt_json(json_file_path: str) -> Tuple[str, List[Dict]]:
@@ -40,44 +40,6 @@ def parse_gt_folder(folder_path: str) -> Dict[str, List[Dict]]:
     return gt_data
 
 
-def generate_mock_predictions(
-    gt_data: Dict[str, List[Tuple[List[Dict], str]]], output_file: str
-):
-    mock_predictions = []
-
-    for _, objects_info in gt_data.items():
-        for objects, image_file_name in objects_info:
-            mock_objects = []
-            for obj in objects:
-                if random.random() < 0.8:
-                    mock_obj = {
-                        "x": obj["x"] + random.randint(-10, 10),
-                        "y": obj["y"] + random.randint(-10, 10),
-                        "width": obj["width"] + random.randint(-10, 10),
-                        "height": obj["height"] + random.randint(-10, 10),
-                        "attribute": obj["attribute"],
-                    }
-                    mock_objects.append(mock_obj)
-                extra_predictions_rate = random.randint(0, 5)
-                for _ in range(extra_predictions_rate):
-                    mock_obj = {
-                        "x": random.randint(0, 1000),
-                        "y": random.randint(0, 1000),
-                        "width": random.randint(10, 100),
-                        "height": random.randint(10, 100),
-                        "attribute": obj["attribute"],
-                    }
-                    mock_objects.append(mock_obj)
-
-            mock_predictions.append(
-                {"image_name": image_file_name, "objects": mock_objects}
-            )
-
-    # 将模拟预测写入文件
-    with open(output_file, "w", encoding="utf-8") as file:
-        json.dump(mock_predictions, file, indent=4, ensure_ascii=False)
-
-
 def parse_user_json(json_file_path: str) -> List[Tuple[List[Dict], str]]:
     """
     Parses the user JSON file and extracts the object data, along with the image file name.
@@ -92,10 +54,16 @@ def parse_user_json(json_file_path: str) -> List[Tuple[List[Dict], str]]:
         data = json.load(file)
 
     parsed_data = []
-    for item in data:
-        image_name = item["image_name"]
-        objects = item["objects"]
+
+    if type(data).__name__ == "dict":
+        image_name = data["image_name"]
+        objects = data["objects"]
         parsed_data.append((objects, image_name))
+    else:
+        for item in data:
+            image_name = item["image_name"]
+            objects = item["objects"]
+            parsed_data.append((objects, image_name))
 
     return parsed_data
 
@@ -162,7 +130,7 @@ def match_predictions(gt_data, pred_data, iou_threshold=0.5):
     unmatched_preds = {}
 
     for pred_boxes, img_name in pred_data:
-        gt_boxes = gt_data.get(img_name, [])
+        gt_boxes = gt_data.get(img_name, []).copy()
         matched_gt[img_name] = []
         matched_preds[img_name] = []
         unmatched_preds[img_name] = []
@@ -226,26 +194,27 @@ def calculate_single_item_scores(
     details = {}
     total_images = len(set([img_name for img_name in gt_data]))  # 计算总图像数量
 
-    # 假设matched_gt, matched_preds, unmatched_preds已经按缺陷类型分组
     for defect_type in matched_gt:
-        gt_boxes = matched_gt[defect_type]
+        gt_boxes_total = [
+            box
+            for img_name, boxes in gt_data.items()
+            for box in boxes
+            if box["attribute"] == defect_type
+        ]
+        M = len(gt_boxes_total)  # 标准框总数
+
         pred_correct_boxes = matched_preds[defect_type]
         pred_incorrect_boxes = unmatched_preds[defect_type]
 
-        M = len(gt_boxes)  # 标准框总数
         M1 = len(pred_correct_boxes)  # 正确匹配的框数
         M2 = len(pred_incorrect_boxes)  # 错误匹配的框数
 
-        # 计算发现率得分
         discovery_rate = M1 / M if M > 0 else 0
         discovery_score = discovery_rate * 60
 
-        # 计算误检比得分
         false_detection_rate = M2 / M if M > 0 else 0
         false_detection_score = calculate_false_detection_score(false_detection_rate)
 
-        # 计算识别效率得分
-        # 计算每种缺陷类型对应的图像数量
         defect_type_images = len(
             set(
                 [
@@ -255,7 +224,6 @@ def calculate_single_item_scores(
                 ]
             )
         )
-        # 计算每种类型的平均处理时间
         avg_processing_time = (
             (total_time * defect_type_images / total_images) if total_images > 0 else 0
         )
@@ -326,7 +294,7 @@ def print_formatted_scores(score_details, total_score):
     # 打印每个缺陷类型的详细得分
     for defect_type, details in score_details.items():
         print(
-            f"{defect_type:<20} {details['discovery_rate']:<20.2f} {details['discovery_score']:<20.2f} {details['false_detection_rate']:<25.2f} {details['false_detection_score']:<25} {details['efficiency_score']:<20}"
+            f"{defect_type:<20} {details['discovery_rate'] * 100:<20.2f} {details['discovery_score']:<20.2f} {details['false_detection_rate']:<25.2f} {details['false_detection_score']:<25} {details['efficiency_score']:<20}"
         )
 
     # 打印总分
@@ -334,17 +302,22 @@ def print_formatted_scores(score_details, total_score):
 
 
 gt_data = parse_gt_folder(gt_folder_path)
-# generate_mock_predictions(gt_data, "inferece.json")
 predict_data = process_user_input(user_folder_path)
 
 matched_gt, matched_preds, unmatched_preds = match_predictions(gt_data, predict_data)
 
-matched_gt, matched_preds, unmatched_preds = group_by_defect_type(
-    matched_gt, matched_preds, unmatched_preds
-)
+(
+    grouped_matched_gt,
+    grouped_matched_preds,
+    grouped_unmatched_preds,
+) = group_by_defect_type(matched_gt, matched_preds, unmatched_preds)
 
 single_item_scores, score_details = calculate_single_item_scores(
-    matched_gt, matched_preds, unmatched_preds, run_time, gt_data
+    grouped_matched_gt,
+    grouped_matched_preds,
+    grouped_unmatched_preds,
+    run_time,
+    gt_data,
 )
 
 total_score = calculate_total_score(single_item_scores)
