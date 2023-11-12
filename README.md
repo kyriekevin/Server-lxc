@@ -22,13 +22,6 @@
             "height": ,
             "attribute": ""
         },
-        {
-            "x": ,
-            "y": ,
-            "width": ,
-            "height": ,
-            "attribute": ""
-        },
     ]
 }
 ```
