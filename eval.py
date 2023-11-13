@@ -1,4 +1,5 @@
 import json
+import csv
 import os
 import random
 from typing import Dict, List, Tuple
@@ -299,6 +300,36 @@ def print_formatted_scores(score_details, total_score):
 
     # 打印总分
     print("\nTotal Score:", total_score)
+
+
+def save_scores_to_csv(score_details, total_score, filename):
+    with open(filename, "w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+
+        writer.writerow(
+            [
+                "Defect Type",
+                "Discovery Rate",
+                "Discovery Score",
+                "False Detection Rate",
+                "False Detection Score",
+                "Efficiency Score",
+            ]
+        )
+
+        for defect_type, details in score_details.items():
+            writer.writerow(
+                [
+                    defect_type,
+                    f"{details['discovery_rate'] * 100:.2f}",
+                    f"{details['discovery_score']:.2f}",
+                    f"{details['false_detection_rate']:.2f}",
+                    f"{details['false_detection_score']:.2f}",
+                    f"{details['efficiency_score']}",
+                ]
+            )
+
+        writer.writerow(["Total Score", "", "", "", "", total_score])
 
 
 gt_data = parse_gt_folder(gt_folder_path)
