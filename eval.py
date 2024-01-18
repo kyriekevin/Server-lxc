@@ -195,6 +195,21 @@ def calculate_single_item_scores(
     details = {}
     total_images = len(set([img_name for img_name in gt_data]))  # 计算总图像数量
 
+    all_defect_types = set()
+    for boexs in gt_data.values():
+        for box in boexs:
+            all_defect_types.add(box["attribute"])
+
+    for defect_type in all_defect_types:
+        scores[defect_type] = 0
+        details[defect_type] = {
+            "discovery_rate": 0,
+            "discovery_score": 0,
+            "false_detection_rate": 0,
+            "false_detection_score": 0,
+            "efficiency_score": 0,
+        }
+
     for defect_type in matched_gt:
         gt_boxes_total = [
             box
