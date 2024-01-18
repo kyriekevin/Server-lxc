@@ -204,8 +204,8 @@ def calculate_single_item_scores(
         ]
         M = len(gt_boxes_total)  # 标准框总数
 
-        pred_correct_boxes = matched_preds[defect_type]
-        pred_incorrect_boxes = unmatched_preds[defect_type]
+        pred_correct_boxes = matched_preds.get(defect_type, [])
+        pred_incorrect_boxes = unmatched_preds.get(defect_type, [])
 
         M1 = len(pred_correct_boxes)  # 正确匹配的框数
         M2 = len(pred_incorrect_boxes)  # 错误匹配的框数
