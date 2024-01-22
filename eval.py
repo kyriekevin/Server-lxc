@@ -3,8 +3,8 @@ import csv
 import os
 from typing import Dict, List, Tuple
 
-gt_folder_path = "dky/eval_dataset_0001"
-user_folder_path = "dky/result"
+gt_folder_path = "./pre_gt/gt/"
+user_folder_path = "./pre_gt/result/"
 csv_path = "test.csv"
 run_time = 1
 
@@ -275,7 +275,42 @@ def calculate_total_score(single_item_scores, gt_label_set, defect_weights=None)
     return total_score / total_weight if total_weight > 0 else 0
 
 
-def print_formatted_scores(score_details, total_score, gt_label_set):
+def calculate_overall_metrics(
+    matched_gt, matched_preds, unmatched_preds, gt_data, total_time
+):
+    total_images = len(gt_data)
+
+    total_gt_boxes = sum(len(boxes) for boxes in gt_data.values())
+    total_correct_matches = sum(len(matches) for matches in matched_preds.values())
+    total_false_detections = sum(
+        len(detections) for detections in unmatched_preds.values()
+    )
+
+    overall_discovery_rate = (
+        total_correct_matches / total_gt_boxes if total_gt_boxes > 0 else 0
+    )
+    overall_false_detection_rate = (
+        total_false_detections / total_gt_boxes if total_gt_boxes > 0 else 0
+    )
+
+    overall_discovery_score = overall_discovery_rate * 60
+    overall_false_detection_score = calculate_false_detection_score(
+        overall_false_detection_rate
+    )
+
+    avg_processing_time = total_time / total_images if total_images > 0 else 0
+    overall_efficiency_score = calculate_efficiency_score(avg_processing_time)
+
+    return {
+        "overall_discovery_rate": overall_discovery_rate,
+        "overall_discovery_score": overall_discovery_score,
+        "overall_false_detection_rate": overall_false_detection_rate,
+        "overall_false_detection_score": overall_false_detection_score,
+        "overall_efficiency_score": overall_efficiency_score,
+    }
+
+
+def print_formatted_scores(score_details, total_score, gt_label_set, overall_metrics):
     print(
         f"{'Defect Type':<20} {'Discovery Rate':<20} {'Discovery Score':<20} {'False Detection Rate':<25} {'False Detection Score':<25} {'Efficiency Score':<20}"
     )
@@ -294,8 +329,17 @@ def print_formatted_scores(score_details, total_score, gt_label_set):
 
     print("\nTotal Score:", total_score)
 
+    print("\n总体指标:")
+    print(f"总体发现率: {overall_metrics['overall_discovery_rate']:.2f}")
+    print(f"总体发现分数: {overall_metrics['overall_discovery_score']:.2f}")
+    print(f"总体误检率: {overall_metrics['overall_false_detection_rate']:.2f}")
+    print(f"总体误检分数: {overall_metrics['overall_false_detection_score']:.2f}")
+    print(f"总体效率分数: {overall_metrics['overall_efficiency_score']:.2f}")
 
-def save_scores_to_csv(score_details, total_score, gt_label_set, filename):
+
+def save_scores_to_csv(
+    score_details, total_score, gt_label_set, filename, overall_metrics
+):
     with open(filename, "w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
 
@@ -339,6 +383,16 @@ def save_scores_to_csv(score_details, total_score, gt_label_set, filename):
 
         writer.writerow(["Total Score", "", "", "", "", total_score])
 
+        writer.writerow([""])
+        writer.writerow(["总体指标"])
+        writer.writerow(["总体发现率", overall_metrics["overall_discovery_rate"]])
+        writer.writerow(["总体发现分数", overall_metrics["overall_discovery_score"]])
+        writer.writerow(["总体误检率", overall_metrics["overall_false_detection_rate"]])
+        writer.writerow(
+            ["总体误检分数", overall_metrics["overall_false_detection_score"]]
+        )
+        writer.writerow(["总体效率分数", overall_metrics["overall_efficiency_score"]])
+
 
 def get_gt_data_label(gt_data):
     gt_label_set = set()
@@ -373,6 +427,10 @@ single_item_scores, score_details = calculate_single_item_scores(
 
 total_score = calculate_total_score(single_item_scores, gt_label_set)
 
-print_formatted_scores(score_details, total_score, gt_label_set)
+overall_metrics = calculate_overall_metrics(
+    matched_gt, matched_preds, unmatched_preds, gt_data, run_time
+)
 
-save_scores_to_csv(score_details, total_score, gt_label_set, csv_path)
+print_formatted_scores(score_details, total_score, gt_label_set, overall_metrics)
+
+save_scores_to_csv(score_details, total_score, gt_label_set, csv_path, overall_metrics)
