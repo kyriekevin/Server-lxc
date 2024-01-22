@@ -1,11 +1,9 @@
+import argparse
 import json
 import csv
 import os
 from typing import Dict, List, Tuple
 
-gt_folder_path = "./pre_gt/gt/"
-user_folder_path = "./pre_gt/result/"
-csv_path = "test.csv"
 run_time = 1
 
 
@@ -327,14 +325,11 @@ def print_formatted_scores(score_details, total_score, gt_label_set, overall_met
         else:
             print(f"{label:<20} {0:<20.2f} {0:<20.2f} {0:<25.2f} {0:<25} {0:<20}")
 
-    print("\nTotal Score:", total_score)
+    print(
+        f"{'Total':<20} {overall_metrics['overall_discovery_rate'] * 100:<20.2f} {overall_metrics['overall_discovery_score']:<20.2f} {overall_metrics['overall_false_detection_rate']:<25.2f} {overall_metrics['overall_false_detection_score']:<25} {overall_metrics['overall_efficiency_score']:<20}"
+    )
 
-    print("\n总体指标:")
-    print(f"总体发现率: {overall_metrics['overall_discovery_rate']:.2f}")
-    print(f"总体发现分数: {overall_metrics['overall_discovery_score']:.2f}")
-    print(f"总体误检率: {overall_metrics['overall_false_detection_rate']:.2f}")
-    print(f"总体误检分数: {overall_metrics['overall_false_detection_score']:.2f}")
-    print(f"总体效率分数: {overall_metrics['overall_efficiency_score']:.2f}")
+    print("\nTotal Score:", total_score)
 
 
 def save_scores_to_csv(
@@ -381,17 +376,17 @@ def save_scores_to_csv(
                     ]
                 )
 
-        writer.writerow(["Total Score", "", "", "", "", total_score])
-
-        writer.writerow([""])
-        writer.writerow(["总体指标"])
-        writer.writerow(["总体发现率", overall_metrics["overall_discovery_rate"]])
-        writer.writerow(["总体发现分数", overall_metrics["overall_discovery_score"]])
-        writer.writerow(["总体误检率", overall_metrics["overall_false_detection_rate"]])
         writer.writerow(
-            ["总体误检分数", overall_metrics["overall_false_detection_score"]]
+            [
+                "Total",
+                f"{overall_metrics['overall_discovery_rate'] * 100:.2f}",
+                f"{overall_metrics['overall_discovery_score']:.2f}",
+                f"{overall_metrics['overall_false_detection_rate']:.2f}",
+                f"{overall_metrics['overall_false_detection_score']:.2f}",
+                f"{overall_metrics['overall_efficiency_score']}",
+            ]
         )
-        writer.writerow(["总体效率分数", overall_metrics["overall_efficiency_score"]])
+        writer.writerow(["Total Score", "", "", "", "", total_score])
 
 
 def get_gt_data_label(gt_data):
@@ -403,34 +398,54 @@ def get_gt_data_label(gt_data):
     return gt_label_set
 
 
-gt_data = parse_gt_folder(gt_folder_path)
+def main(gt_folder_path, user_folder_path, csv_path):
+    gt_data = parse_gt_folder(gt_folder_path)
 
-gt_label_set = get_gt_data_label(gt_data)
+    gt_label_set = get_gt_data_label(gt_data)
 
-predict_data = process_user_input(user_folder_path)
+    predict_data = process_user_input(user_folder_path)
 
-matched_gt, matched_preds, unmatched_preds = match_predictions(gt_data, predict_data)
+    matched_gt, matched_preds, unmatched_preds = match_predictions(
+        gt_data, predict_data
+    )
 
-(
-    grouped_matched_gt,
-    grouped_matched_preds,
-    grouped_unmatched_preds,
-) = group_by_defect_type(matched_gt, matched_preds, unmatched_preds)
+    (
+        grouped_matched_gt,
+        grouped_matched_preds,
+        grouped_unmatched_preds,
+    ) = group_by_defect_type(matched_gt, matched_preds, unmatched_preds)
 
-single_item_scores, score_details = calculate_single_item_scores(
-    grouped_matched_gt,
-    grouped_matched_preds,
-    grouped_unmatched_preds,
-    run_time,
-    gt_data,
-)
+    single_item_scores, score_details = calculate_single_item_scores(
+        grouped_matched_gt,
+        grouped_matched_preds,
+        grouped_unmatched_preds,
+        run_time,
+        gt_data,
+    )
 
-total_score = calculate_total_score(single_item_scores, gt_label_set)
+    total_score = calculate_total_score(single_item_scores, gt_label_set)
 
-overall_metrics = calculate_overall_metrics(
-    matched_gt, matched_preds, unmatched_preds, gt_data, run_time
-)
+    overall_metrics = calculate_overall_metrics(
+        matched_gt, matched_preds, unmatched_preds, gt_data, run_time
+    )
 
-print_formatted_scores(score_details, total_score, gt_label_set, overall_metrics)
+    print_formatted_scores(score_details, total_score, gt_label_set, overall_metrics)
 
-save_scores_to_csv(score_details, total_score, gt_label_set, csv_path, overall_metrics)
+    save_scores_to_csv(
+        score_details, total_score, gt_label_set, csv_path, overall_metrics
+    )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Process ground truth and user data.")
+    parser.add_argument(
+        "gt_folder_path", type=str, help="Path to the ground truth folder"
+    )
+    parser.add_argument(
+        "user_folder_path", type=str, help="Path to the user result folder"
+    )
+    parser.add_argument("csv_path", type=str, help="Path to save the output CSV file")
+
+    args = parser.parse_args()
+
+    main(args.gt_folder_path, args.user_folder_path, args.csv_path)

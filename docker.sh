@@ -1,16 +1,15 @@
 #!/bin/bash
 
-if [ "$#" -ne 6 ]; then
-	echo "Usage: $0 <path_to_tar_file> <gpu_id> <cpu_cores> <mount_path> <taskID> <userID>"
+if [ "$#" -ne 5 ]; then
+	echo "Usage: $0 <path_to_tar_file> <gpu_id> <cpu_cores> <taskID> <userID>"
 	exit 1
 fi
 
 TAR_PATH="$1"
 GPU_ID="$2"
 CPU_CORES="$3"
-MOUNT_PATH="$4"
-TASKID="$5"
-USERID="$6"
+TASKID="$4"
+USERID="$5"
 
 if [ ! -f "$TAR_PATH" ]; then
 	echo "Error: File not found!"
@@ -18,11 +17,11 @@ if [ ! -f "$TAR_PATH" ]; then
 fi
 
 echo "Loading Docker image from $TAR_PATH..."
-IMAGE_ID=$(sudo docker load -i $TAR_PATH | awk '{print $3}')
-echo "Image loaded with ID: $IMAGE_ID"
+DOCKER_ID=$(sudo docker load -i $TAR_PATH | awk '{print $3}')
+echo "Image loaded with ID: $DOCKER_ID"
 
-echo "Starting the Docker container with mounted path $MOUNT_PATH..."
-sudo docker run -d --gpus "\"device=$GPU_ID\"" --cpuset-cpus="$CPU_CORES" -m 32g -v /data/$TASKID/eval_data/images:$MOUNT_PATH $IMAGE_ID tail -f /dev/null
+echo "Starting the Docker container with mounted path /home/eval_data..."
+sudo docker run -d --gpus "\"device=$GPU_ID\"" --cpuset-cpus="$CPU_CORES" -m 32g -v /data/$TASKID/eval_data/images:/home/eval_data $DOCKER_ID tail -f /dev/null
 
 if [ $? -ne 0 ]; then
 	echo "Failed to start the Docker container."
@@ -46,8 +45,7 @@ fi
 echo "Command executed successfully."
 
 echo "Copying the result from the Docker container..."
-mkdir -p /data/$TASKID/
-sudo docker cp $CONTAINER_ID:/home/result /data/$TASKID/$USERID/
+sudo docker cp $CONTAINER_ID:/home/result/ /data/$TASKID/$USERID/
 echo "Result copied to /data/$TASKID/$USERID/"
 
 echo "Stopping and removing the Docker container..."
@@ -56,5 +54,5 @@ sudo docker rm $CONTAINER_ID
 echo "Container stopped and removed."
 
 echo "Removing the Docker image..."
-sudo docker rmi $IMAGE_ID
+sudo docker rmi $DOCKER_ID
 echo "Image removed."
