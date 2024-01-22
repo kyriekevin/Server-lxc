@@ -1,12 +1,12 @@
 import json
 import csv
 import os
-import random
 from typing import Dict, List, Tuple
 
-gt_folder_path = "./img_test/"
-user_folder_path = "./mock_data/"
-run_time = 10
+gt_folder_path = "dky/eval_dataset_0001"
+user_folder_path = "dky/result"
+csv_path = "test.csv"
+run_time = 1
 
 
 def parse_gt_json(json_file_path: str) -> Tuple[str, List[Dict]]:
@@ -31,7 +31,7 @@ def parse_gt_json(json_file_path: str) -> Tuple[str, List[Dict]]:
 
 def parse_gt_folder(folder_path: str) -> Dict[str, List[Dict]]:
     gt_data = {}
-    for root, dirs, files in os.walk(folder_path):
+    for root, _, files in os.walk(folder_path):
         for file in files:
             if file.endswith(".json"):
                 file_path = os.path.join(root, file)
@@ -99,18 +99,24 @@ def process_user_input(input_path: str) -> List[Tuple[List[Dict], str]]:
     List[Tuple[List[Dict], str]]: A list of tuples, each containing object data and the associated image file name.
     """
     if os.path.isfile(input_path) and input_path.endswith(".json"):
-        # Single JSON file
         return parse_user_json(input_path)
     elif os.path.isdir(input_path):
-        # Folder containing multiple JSON files
         return parse_user_folder(input_path)
     else:
         raise ValueError("The input path is neither a JSON file nor a directory.")
 
 
 def calculate_iou(box1: Dict, box2: Dict) -> float:
-    x1, y1, w1, h1 = box1["x"], box1["y"], box1["width"], box1["height"]
-    x2, y2, w2, h2 = box2["x"], box2["y"], box2["width"], box2["height"]
+    if "x" in box1:
+        x1, y1, w1, h1 = box1["x"], box1["y"], box1["width"], box1["height"]
+    else:
+        print("box1 error")
+        exit()
+    if "x" in box2:
+        x2, y2, w2, h2 = box2["x"], box2["y"], box2["width"], box2["height"]
+    else:
+        print("box2 error")
+        exit()
 
     xi1 = max(x1, x2)
     yi1 = max(y1, y2)
@@ -152,7 +158,7 @@ def match_predictions(gt_data, pred_data, iou_threshold=0.5):
             if best_gt_box:
                 matched_gt[img_name].append(best_gt_box)
                 matched_preds[img_name].append(pred_box)
-                gt_boxes.remove(best_gt_box)  # 避免重复匹配
+                gt_boxes.remove(best_gt_box)
             else:
                 unmatched_preds[img_name].append(pred_box)
 
@@ -164,21 +170,21 @@ def group_by_defect_type(matched_gt, matched_preds, unmatched_preds):
     grouped_matched_preds = {}
     grouped_unmatched_preds = {}
 
-    for img_name, boxes in matched_gt.items():
+    for _, boxes in matched_gt.items():
         for box in boxes:
             defect_type = box["attribute"]
             if defect_type not in grouped_matched_gt:
                 grouped_matched_gt[defect_type] = []
             grouped_matched_gt[defect_type].append(box)
 
-    for img_name, boxes in matched_preds.items():
+    for _, boxes in matched_preds.items():
         for box in boxes:
             defect_type = box["attribute"]
             if defect_type not in grouped_matched_preds:
                 grouped_matched_preds[defect_type] = []
             grouped_matched_preds[defect_type].append(box)
 
-    for img_name, boxes in unmatched_preds.items():
+    for _, boxes in unmatched_preds.items():
         for box in boxes:
             defect_type = box["attribute"]
             if defect_type not in grouped_unmatched_preds:
@@ -193,37 +199,22 @@ def calculate_single_item_scores(
 ):
     scores = {}
     details = {}
-    total_images = len(set([img_name for img_name in gt_data]))  # 计算总图像数量
-
-    all_defect_types = set()
-    for boexs in gt_data.values():
-        for box in boexs:
-            all_defect_types.add(box["attribute"])
-
-    for defect_type in all_defect_types:
-        scores[defect_type] = 0
-        details[defect_type] = {
-            "discovery_rate": 0,
-            "discovery_score": 0,
-            "false_detection_rate": 0,
-            "false_detection_score": 0,
-            "efficiency_score": 0,
-        }
+    total_images = len(set([img_name for img_name in gt_data]))
 
     for defect_type in matched_gt:
         gt_boxes_total = [
             box
-            for img_name, boxes in gt_data.items()
+            for _, boxes in gt_data.items()
             for box in boxes
             if box["attribute"] == defect_type
         ]
-        M = len(gt_boxes_total)  # 标准框总数
+        M = len(gt_boxes_total)
 
-        pred_correct_boxes = matched_preds.get(defect_type, [])
-        pred_incorrect_boxes = unmatched_preds.get(defect_type, [])
+        pred_correct_boxes = matched_preds[defect_type]
+        pred_incorrect_boxes = unmatched_preds[defect_type]
 
-        M1 = len(pred_correct_boxes)  # 正确匹配的框数
-        M2 = len(pred_incorrect_boxes)  # 错误匹配的框数
+        M1 = len(pred_correct_boxes)
+        M2 = len(pred_incorrect_boxes)
 
         discovery_rate = M1 / M if M > 0 else 0
         discovery_score = discovery_rate * 60
@@ -231,21 +222,9 @@ def calculate_single_item_scores(
         false_detection_rate = M2 / M if M > 0 else 0
         false_detection_score = calculate_false_detection_score(false_detection_rate)
 
-        defect_type_images = len(
-            set(
-                [
-                    img_name
-                    for img_name, boxes in gt_data.items()
-                    if any(box["attribute"] == defect_type for box in boxes)
-                ]
-            )
-        )
-        avg_processing_time = (
-            (total_time * defect_type_images / total_images) if total_images > 0 else 0
-        )
+        avg_processing_time = (total_time / total_images) if total_images > 0 else 0
         efficiency_score = calculate_efficiency_score(avg_processing_time)
 
-        # 计算单项识别效果得分
         single_item_score = discovery_score + false_detection_score + efficiency_score
         scores[defect_type] = single_item_score
         details[defect_type] = {
@@ -259,7 +238,6 @@ def calculate_single_item_scores(
     return scores, details
 
 
-# Define the thresholds and corresponding scores for false detection and efficiency
 false_detection_thresholds = [1, 2, 3, 5, 10, float("inf")]
 false_detection_scores = [30, 25, 20, 10, 5, 0]
 
@@ -268,12 +246,10 @@ efficiency_scores = [10, 8, 5, 3, 1, 0]
 
 
 def calculate_score(value, thresholds, scores):
-    # Add a check for the case when value is exactly on a threshold
     for i, threshold in enumerate(thresholds):
         if value <= threshold:
             return scores[i]
 
-    # If value is greater than all thresholds, return the last score
     return scores[-1]
 
 
@@ -285,10 +261,9 @@ def calculate_efficiency_score(T):
     return calculate_score(T, efficiency_thresholds, efficiency_scores)
 
 
-def calculate_total_score(single_item_scores, defect_weights=None):
+def calculate_total_score(single_item_scores, gt_label_set, defect_weights=None):
     if not defect_weights:
-        # 如果没有提供权重，则假定所有缺陷类型权重相同
-        defect_weights = {defect_type: 1 for defect_type in single_item_scores}
+        defect_weights = {defect_type: 1 for defect_type in gt_label_set}
 
     total_score = 0
     total_weight = sum(defect_weights.values())
@@ -300,24 +275,27 @@ def calculate_total_score(single_item_scores, defect_weights=None):
     return total_score / total_weight if total_weight > 0 else 0
 
 
-def print_formatted_scores(score_details, total_score):
-    # 打印表头
+def print_formatted_scores(score_details, total_score, gt_label_set):
     print(
         f"{'Defect Type':<20} {'Discovery Rate':<20} {'Discovery Score':<20} {'False Detection Rate':<25} {'False Detection Score':<25} {'Efficiency Score':<20}"
     )
     print("-" * 130)
 
-    # 打印每个缺陷类型的详细得分
     for defect_type, details in score_details.items():
         print(
             f"{defect_type:<20} {details['discovery_rate'] * 100:<20.2f} {details['discovery_score']:<20.2f} {details['false_detection_rate']:<25.2f} {details['false_detection_score']:<25} {details['efficiency_score']:<20}"
         )
 
-    # 打印总分
+    for label in gt_label_set:
+        if label in score_details:
+            continue
+        else:
+            print(f"{label:<20} {0:<20.2f} {0:<20.2f} {0:<25.2f} {0:<25} {0:<20}")
+
     print("\nTotal Score:", total_score)
 
 
-def save_scores_to_csv(score_details, total_score, filename):
+def save_scores_to_csv(score_details, total_score, gt_label_set, filename):
     with open(filename, "w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
 
@@ -344,10 +322,37 @@ def save_scores_to_csv(score_details, total_score, filename):
                 ]
             )
 
+        for label in gt_label_set:
+            if label in score_details:
+                continue
+            else:
+                writer.writerow(
+                    [
+                        label,
+                        f"{0:.2f}",
+                        f"{0:.2f}",
+                        f"{0:.2f}",
+                        f"{0:.2f}",
+                        f"{0}",
+                    ]
+                )
+
         writer.writerow(["Total Score", "", "", "", "", total_score])
 
 
+def get_gt_data_label(gt_data):
+    gt_label_set = set()
+
+    for _, value in gt_data.items():
+        for item in value:
+            gt_label_set.add(item["attribute"])
+    return gt_label_set
+
+
 gt_data = parse_gt_folder(gt_folder_path)
+
+gt_label_set = get_gt_data_label(gt_data)
+
 predict_data = process_user_input(user_folder_path)
 
 matched_gt, matched_preds, unmatched_preds = match_predictions(gt_data, predict_data)
@@ -366,6 +371,8 @@ single_item_scores, score_details = calculate_single_item_scores(
     gt_data,
 )
 
-total_score = calculate_total_score(single_item_scores)
+total_score = calculate_total_score(single_item_scores, gt_label_set)
 
-print_formatted_scores(score_details, total_score)
+print_formatted_scores(score_details, total_score, gt_label_set)
+
+save_scores_to_csv(score_details, total_score, gt_label_set, csv_path)
