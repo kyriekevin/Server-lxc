@@ -129,7 +129,7 @@ def calculate_iou(box1: Dict, box2: Dict) -> float:
     return iou
 
 
-def match_predictions(gt_data, pred_data, iou_threshold=0.5):
+def match_predictions(gt_data, pred_data, iou_threshold=0.1):
     matched_gt = {}
     matched_preds = {}
     unmatched_preds = {}
